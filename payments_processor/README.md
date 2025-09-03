@@ -17,6 +17,7 @@ cargo run -- transactions.csv > accounts.csv
 * Unit tests for all major functions
 * Avoid panics and crashes
 * Streaming values through memory using csv::Reader
+* Handles multiple files concurrently and safely using Tokio and Mutex respectively (commit: Checkpoint-2)
 
 ### Design
 
