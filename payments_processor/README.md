@@ -4,7 +4,13 @@ Rust project that reads a CSV of transactions, processes it, then outputs a CSV 
 
 ### Usage
 
+Single file:
+
 cargo run -- transactions.csv > accounts.csv
+
+Multiple files:
+
+cargo run -- input-file-1.csv input-file-2.csv > accounts.csv
 
 ### Functional Requirements
 * Reads CSV files and processes each line

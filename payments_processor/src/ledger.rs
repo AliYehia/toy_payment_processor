@@ -61,7 +61,7 @@ impl Ledger {
     pub fn process(&mut self, record: StringRecord) {
         match Transaction::create_transaction(&record) {
             Ok(tx) => {
-                if let Err(e) = self.process_transaction(tx) {
+                if let Err(e) = self.process_transaction(&tx) {
                     eprintln!("Error applying transaction: {}", e);
                 }
             }
@@ -69,44 +69,37 @@ impl Ledger {
         }
     }
 
-    fn process_transaction(&mut self, tx: Transaction) -> Result<(), LedgerError> {
+    fn process_transaction(&mut self, tx: &Transaction) -> Result<(), LedgerError> {
         match tx.tx_type {
-            TxType::Deposit => self.deposit(&tx),
-            TxType::Withdrawal => self.withdraw( &tx),
-            TxType::Dispute => self.dispute(&tx),
-            TxType::Resolve => self.resolve(&tx),
-            TxType::Chargeback => self.chargeback(&tx),
+            TxType::Deposit => self.deposit(tx),
+            TxType::Withdrawal => self.withdraw( tx),
+            TxType::Dispute => self.dispute(tx),
+            TxType::Resolve => self.resolve(tx),
+            TxType::Chargeback => self.chargeback(tx),
         }
     }
 
     fn deposit(&mut self, t: &Transaction) -> Result<(), LedgerError> {
         let client = self.clients.add_client(t.client_id);
-
-        if let Some(amount) = t.amount {
-            client.available += amount;
-            client.total += amount;
-            self.ledger.insert(t.tx_id, t.clone());
-            return Ok(())
-        } else {
-            return Err(LedgerError::MalformedRequest); // should never happen - double check azy
-        }
+        let amount = t.amount.ok_or(LedgerError::MalformedRequest)?;
+        client.available += amount;
+        client.total += amount;
+        self.ledger.insert(t.tx_id, t.clone());
+        Ok(())
     }
 
     fn withdraw(&mut self, t: &Transaction) -> Result<(), LedgerError> {
         let client = self.clients.add_client(t.client_id);
+        let amount = t.amount.ok_or(LedgerError::MalformedRequest)?;
 
-        if let Some(amount) = t.amount {
-            // Assumption-1: Only withdraw if available > tx amount, so we don't end up with negative balances - please comment 'if statement' below if incorrect
-            if client.available >= amount {
-                client.available -= amount;
-                client.total -= amount;
-                self.ledger.insert(t.tx_id, t.clone());
-                return Ok(())
-            } else {
-                return Err(LedgerError::NotEnoughFunds { client: (t.client_id), requested: (amount), available: (client.available) });
-            }
+        // Assumption-1: Only withdraw if available > tx amount, so we don't end up with negative balances - please comment 'if statement' below if incorrect
+        if client.available >= amount {
+            client.available -= amount;
+            client.total -= amount;
+            self.ledger.insert(t.tx_id, t.clone());
+            return Ok(())
         } else {
-            return Err(LedgerError::MalformedRequest);
+            return Err(LedgerError::NotEnoughFunds { client: (t.client_id), requested: (amount), available: (client.available) });
         }
     }
 
@@ -119,14 +112,11 @@ impl Ledger {
             Some(tx) => tx,
             None => return Err(LedgerError::InvalidDispute(t.tx_id)),
         };
-        if let Some(amount) = tx.amount {
-            client.held += amount;
-            client.available -= amount;
-            tx.status = PaymentStatus::Disputed;
-            return Ok(());
-        } else {
-            return Err(LedgerError::MalformedRequest)
-        }
+        let amount = tx.amount.ok_or(LedgerError::MalformedRequest)?;
+        client.held += amount;
+        client.available -= amount;
+        tx.status = PaymentStatus::Disputed;
+        Ok(())
     }
 
     fn resolve(&mut self, t: &Transaction) -> Result<(), LedgerError> {
@@ -141,13 +131,12 @@ impl Ledger {
         if !matches!(tx.status, PaymentStatus::Disputed) {
             return Err(LedgerError::InvalidDispute(t.tx_id))
         }
-        if let Some(amount) = tx.amount {
-            client.held -= amount;
-            client.available += amount;
-            // Assumption-2: Mark transaction as no longer disputed - please comment line below if incorrect
-            tx.status = PaymentStatus::Undisputed;
-            return Ok(());
-        } else { return Err(LedgerError::MalformedRequest) } // should never happen
+        let amount = tx.amount.ok_or(LedgerError::MalformedRequest)?;
+        client.held -= amount;
+        client.available += amount;
+        // Assumption-2: Mark transaction as no longer disputed - please comment line below if incorrect
+        tx.status = PaymentStatus::Undisputed;
+        Ok(())
     }
 
     fn chargeback(&mut self, t: &Transaction) -> Result<(), LedgerError> {
@@ -162,14 +151,13 @@ impl Ledger {
         if !matches!(tx.status, PaymentStatus::Disputed) {
             return Err(LedgerError::InvalidDispute(t.tx_id))
         }
-        if let Some(amount) = tx.amount {
-            client.held -= amount;
-            client.total -= amount;
-            client.locked = true; 
-            // my gut feeling tells me that this is still a disputed charge, so I wont do the same (switch tx.status) 
-            // as I did in resolve and change the PaymentStatus - please add if incorrect? :)
-            return Ok(());
-        } else { return Err(LedgerError::MalformedRequest) } // should never happen
+        let amount = tx.amount.ok_or(LedgerError::MalformedRequest)?;
+        client.held -= amount;
+        client.total -= amount;
+        client.locked = true; 
+        // my gut feeling tells me that this is still a disputed charge, so I wont do the same (switch tx.status) 
+        // as I did in resolve and change the PaymentStatus - please add if incorrect? :)
+        Ok(())
     }
 }
 
